@@ -1,0 +1,43 @@
+{
+  "recorder": {
+    "osc_port": 5000,
+    "osc_address": "/muse/eeg",
+    "sampling_rate": 256,
+    "channels": ["TP9", "AF7", "AF8", "TP10"]
+  },
+  "muse_bridge": {
+    "shaper_ip": "127.0.0.1",
+    "shaper_port": 9002,
+    "shaper_api": "http://127.0.0.1:8080",
+    "default_depth": 0.20,
+    "smoothing_alpha": 0.25,
+    "update_rate_hz": 4,
+    "osc_rate_hz": 30,
+    "window_seconds": 1.0,
+    "tilt_weights": [-0.8, -0.4, 0.0, 0.4, 0.8],
+    "pulse_amplitude": 0.15
+  },
+  "midi_relay": {
+    "midi_port": null,
+    "cc_number": 1,
+    "target_ip": "127.0.0.1",
+    "target_port": 5000,
+    "osc_address": "/bridge/gain_depth"
+  },
+  "hr_relay": {
+    "mode": "simulate",
+    "target_ip": "127.0.0.1",
+    "target_port": 5000,
+    "bpm": 72,
+    "variation": 3,
+    "scan_timeout": 10,
+    "poll_interval": 15
+  },
+  "playback": {
+    "actuator_ip": "192.168.1.50",
+    "actuator_port": 53280,
+    "osc_address": "/fnote",
+    "harmonic_multiplier": 32,
+    "fundamental_hz": 64.0
+  }
+}
