@@ -205,6 +205,10 @@ conflict.
 
 ## Configuration
 
+> **Tip:** The interactive launcher (`python cymatic.py`) can configure all of
+> these parameters for you through a step-by-step wizard. Use the manual
+> arguments below when scripting or fine-tuning.
+
 ### CLI Arguments (gain-related)
 
 | Argument | Default | Description |

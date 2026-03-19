@@ -96,6 +96,10 @@ This is the fallback for Fitbit models that don't support BLE HR broadcast.
 
 ## hr_relay.py: Three Modes
 
+> **Tip:** The interactive launcher (`python cymatic.py`) handles heart rate
+> setup in Step 2/3 of the signal-chain wizard — pick your source and it
+> configures the relay and bridge automatically.
+
 The relay script is the single entry point for all heart rate data sources.
 It normalizes everything into the same OSC interface that `muse_bridge.py`
 expects.

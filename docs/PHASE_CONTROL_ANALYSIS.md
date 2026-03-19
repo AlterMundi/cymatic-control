@@ -457,6 +457,10 @@ the shaper from being left in a random phase state.
 
 ## Configuration Reference
 
+> **Tip:** The interactive launcher (`python cymatic.py`) can configure all of
+> these parameters through a step-by-step wizard. The manual arguments below
+> are for scripting or fine-tuning.
+
 ### CLI Arguments
 
 | Argument | Default | Description |

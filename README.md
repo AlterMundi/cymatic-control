@@ -4,6 +4,67 @@ Live modulation of [harmonic_shaper](https://github.com/AlterMundi/NaturalHarmon
 cymatic patterns using EEG (Muse 2), heart rate (Fitbit / BLE), and MIDI
 (Launchpad Mini). Every input is independent and optional.
 
+## Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start harmonic_shaper first (in the NaturalHarmony repo)
+python -m harmonic_shaper.main
+
+# Launch the interactive session builder
+python cymatic.py
+```
+
+The interactive launcher walks you through a signal-chain wizard —
+pick your inputs and the system figures out which scripts to run and
+with what parameters:
+
+```
+Step 1/3 — EEG → Phase Rotation
+  1  Muse 2 (live via Mind Monitor OSC)
+  2  EEG Simulator (cycles through 7 brain states)
+  3  Tilt Simulator (alpha/beta stages for gain observation)
+  4  Skip (no EEG — heartbeat pulse only)
+
+Step 2/3 — Heart Rate → Gain Pulse
+  1  Skip (no heartbeat pulse)
+  2  Simulate (synthetic beats at configurable BPM)
+  3  BLE sensor (Fitbit Charge 6 / any BLE HR device)
+  4  Fitbit Web API (cloud polling, OAuth required)
+
+Step 3/3 — MIDI → Gain Tilt Depth
+  1  Skip (no gain modulation)
+  2  MIDI controller (Launchpad slider controls depth live)
+  3  Fixed depth (constant EEG gain modulation, no slider)
+```
+
+Quick-start presets are also available — "test without hardware",
+"Muse-only phase", and "full session" — each one launches all the
+right processes with a single confirmation.
+
+### Manual Launch
+
+You can also run scripts directly if you prefer:
+
+```bash
+# Test without any hardware
+python simulate_eeg.py &
+python hr_relay.py --mode simulate --bpm 72 &
+python muse_bridge.py --param both --depth 30
+
+# Muse phase only
+python muse_bridge.py --param phase --depth 30
+
+# Muse + Launchpad + Fitbit (all three inputs)
+python midi_relay.py --target-port 5000 &
+python hr_relay.py --mode ble &
+python muse_bridge.py --param both --depth 30
+```
+
+See [docs/SESSION_GUIDE.md](docs/SESSION_GUIDE.md) for all 7 configurations.
+
 ## Architecture
 
 ```
@@ -18,53 +79,15 @@ cymatic patterns using EEG (Muse 2), heart rate (Fitbit / BLE), and MIDI
                          └─────────────────────────────────┘
 ```
 
-### Modular Inputs
+### Signal Chain (how inputs map to effects)
 
-| Input | Script | Controls | Optional? |
-|-------|--------|----------|-----------|
-| **Muse 2 EEG** | `muse_bridge.py` | Phase rotation + gain tilt | Yes |
-| **Fitbit / HR sensor** | `hr_relay.py` | Heartbeat gain pulse | Yes |
-| **Launchpad slider** | `midi_relay.py` | EEG gain modulation depth | Yes |
-| **EEG simulator** | `simulate_eeg.py` | Synthetic Muse 2 data | Replaces hardware |
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Start harmonic_shaper first (in the NaturalHarmony repo)
-python -m harmonic_shaper.main
-```
-
-### Session Configurations
-
-**1. Muse phase only** -- brain rhythms control cymatic shape
-```bash
-python muse_bridge.py --param phase --depth 30
-```
-
-**2. Muse phase + Fitbit heartbeat** -- shape from brain, pulse from heart
-```bash
-python hr_relay.py --mode simulate --bpm 72 &
-python muse_bridge.py --param phase --depth 30
-```
-
-**3. Muse + Launchpad + Fitbit** -- all three inputs
-```bash
-python midi_relay.py --target-port 5000 &
-python hr_relay.py --mode ble &
-python muse_bridge.py --param both --depth 30
-```
-
-**4. Test without any hardware**
-```bash
-python simulate_eeg.py &
-python hr_relay.py --mode simulate --bpm 72 &
-python muse_bridge.py --param both --depth 30
-```
-
-See [docs/SESSION_GUIDE.md](docs/SESSION_GUIDE.md) for all 7 configurations.
+| Input | Script | What it controls | Effect on cymatics |
+|-------|--------|------------------|--------------------|
+| **Muse 2 EEG** | `muse_bridge.py` | Phase rotation | Shape of interference pattern evolves with brain state |
+| **Muse 2 EEG** | `muse_bridge.py` | Gain tilt | Harmonic balance shifts (relaxed = warm, focused = bright) |
+| **Fitbit / HR sensor** | `hr_relay.py` | Gain pulse | Visible "breathing" in sync with heartbeat |
+| **Launchpad slider** | `midi_relay.py` | Gain tilt depth | How much EEG is allowed to tilt the gain curve |
+| **EEG simulator** | `simulate_eeg.py` | Synthetic Muse 2 data | Replaces hardware for testing |
 
 ## Parameter Modes (`--param`)
 
@@ -106,6 +129,7 @@ final_gain = base * (1 + tilt * gain_depth) * (1 + heartbeat_envelope)
 
 | Script | Purpose |
 |--------|---------|
+| **`cymatic.py`** | **Interactive session launcher — the recommended entry point** |
 | `muse_bridge.py` | EEG + heartbeat + slider -> harmonic_shaper modulation |
 | `hr_relay.py` | Heart rate -> OSC (simulate, BLE, or Fitbit Web API) |
 | `midi_relay.py` | MIDI CC (Launchpad slider) -> OSC for muse_bridge |

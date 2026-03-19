@@ -1,5 +1,42 @@
 # Session Guide: Modular Architecture
 
+## Interactive Launcher (recommended)
+
+The easiest way to set up any session is the interactive launcher:
+
+```bash
+python cymatic.py
+```
+
+It walks you through a signal-chain wizard — pick your inputs and the system
+determines the correct scripts, flags, and parameter mode automatically:
+
+| Step | Signal → Effect | What you choose |
+|------|-----------------|-----------------|
+| 1/3 | **EEG → Phase rotation** | Muse 2, EEG Simulator, Tilt Simulator, or skip |
+| 2/3 | **Heart Rate → Gain pulse** | Simulate, BLE sensor, Fitbit Web API, or skip |
+| 3/3 | **MIDI → Gain tilt depth** | MIDI controller, fixed depth, or skip |
+
+The launcher resolves the `--param` mode from your choices:
+
+| Inputs selected | Resolved mode |
+|-----------------|---------------|
+| EEG only | `phase` |
+| EEG + MIDI slider | `both` (phase + gain) |
+| EEG + fixed gain depth | `both` (phase + gain) |
+| HR only (no EEG) | `phase --depth 0` (pulse only) |
+| EEG + HR (no MIDI) | `phase` with pulse |
+| EEG + HR + MIDI | `both` with pulse |
+
+After configuring, it shows a preview of every command it will run
+and launches all processes with proper sequencing (background relays first,
+main bridge last). Ctrl+C stops everything cleanly.
+
+Quick-start presets are also available: **Test without hardware**,
+**Muse-only phase**, and **Full session** (Muse + Launchpad + BLE HR).
+
+---
+
 ## Core Principle
 
 **Every input is independent and optional.** The system is built so you can
@@ -39,6 +76,11 @@ and the bridge handles it gracefully. No input source depends on any other.
 ---
 
 ## Session Configurations
+
+> **Tip:** All of these configurations can be set up through the interactive
+> launcher (`python cymatic.py`) without memorizing any flags. The manual
+> commands below are useful for scripting or understanding what runs under
+> the hood.
 
 ### 1. Muse Phase Only
 
@@ -251,6 +293,21 @@ All communication happens over OSC (UDP) on localhost by default:
 
 All scripts default to `127.0.0.1` (localhost). For multi-machine setups,
 use the `--target-ip` / `--shaper-ip` arguments.
+
+---
+
+## Other Bridge Modes
+
+The Harmonic Shaper session (muse_bridge) is the primary workflow, but two
+standalone bridges are also available for different hardware setups:
+
+| Bridge | Target | Use case |
+|--------|--------|----------|
+| `osc_bridge.py` | ESP32 actuator (OSC /fnote) | EEG → vibration without harmonic_shaper |
+| `eeg_harmonic_bridge.py` | Surge XT + ESP32 (HTTP) | Multi-voice harmonic series with filter modulation |
+
+Both are accessible through the interactive launcher's main menu (options 2
+and 3), or can be run directly from the command line.
 
 ---
 
