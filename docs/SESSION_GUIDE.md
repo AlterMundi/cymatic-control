@@ -14,7 +14,7 @@ determines the correct scripts, flags, and parameter mode automatically:
 | Step | Signal → Effect | What you choose |
 |------|-----------------|-----------------|
 | 1/3 | **EEG → Phase rotation** | Muse 2, EEG Simulator, Tilt Simulator, or skip |
-| 2/3 | **Heart Rate → Gain pulse** | Simulate, BLE sensor, Fitbit Web API, or skip |
+| 2/3 | **Heart Rate → Gain pulse** | ECG chest sensor, Simulate, BLE, Fitbit API, or skip |
 | 3/3 | **MIDI → Gain tilt depth** | MIDI controller, fixed depth, or skip |
 
 The launcher resolves the `--param` mode from your choices:
@@ -46,7 +46,7 @@ and the bridge handles it gracefully. No input source depends on any other.
 | Input | Script | What it controls | If absent |
 |-------|--------|------------------|-----------|
 | Muse 2 EEG | (streams to `muse_bridge.py`) | Phase rotation + gain tilt | Bridge idles, no modulation |
-| Fitbit / HR sensor | `hr_relay.py` | Gain pulse on heartbeat | No pulse, gains stay flat |
+| AD8232 / Fitbit / HR sensor | `hr_relay.py` | Gain pulse on heartbeat | No pulse, gains stay flat |
 | Launchpad slider | `midi_relay.py` | EEG gain modulation depth | Depth stays at CLI default |
 | EEG simulator | `simulate_eeg.py` | Synthetic Muse 2 data | Replaces Muse 2 hardware |
 
@@ -59,7 +59,8 @@ and the bridge handles it gracefully. No input source depends on any other.
   Muse 2 ──OSC──────────→│                                 │
   (or simulate_eeg.py)   │                                 │
                          │         muse_bridge.py          │
-  Fitbit ──hr_relay.py──→│                                 │──→ harmonic_shaper
+  AD8232/Fitbit          │                                 │
+  ──── hr_relay.py ─────→│                                 │──→ harmonic_shaper
                          │  param mode: gain/phase/both    │    (OSC :9002)
   Launchpad ──midi_relay→│                                 │
                     .py  │                                 │
@@ -227,6 +228,31 @@ python muse_bridge.py --param both --depth 30
 
 **Good for:** Development, debugging, tuning parameters before a live session.
 
+### 8. ECG Heartbeat (AD8232 + ESP32)
+
+Real-time heartbeat from chest ECG — the highest-fidelity heart rate source.
+
+```bash
+# Terminal 1: ECG relay (ESP32 streams to this)
+python hr_relay.py --mode ecg
+
+# Terminal 2: Bridge with phase + heartbeat pulse
+python muse_bridge.py --param phase --depth 30 --pulse 0.15
+```
+
+**What happens:**
+- ESP32 reads AD8232 ECG at 250 Hz, streams `/ecg/raw` over WiFi to port 5001
+- `hr_relay.py` runs Pan-Tompkins R-peak detection, forwards `/bridge/heartbeat`
+- The cymatic pattern pulses in sync with your actual heartbeat (~5ms latency)
+
+**ESP32 setup:** Edit WiFi credentials and target IP in
+`firmware/ecg_esp32/ecg_esp32.ino` and upload (or configure via serial
+commands after upload). Use `python test_ecg_stream.py --detect` to verify
+the stream before connecting the full system.
+
+**Good for:** Live performance, installations, sessions where real heartbeat
+fidelity matters. Combine with Muse 2 EEG for the full body-mind experience.
+
 ---
 
 ## How Inputs Combine
@@ -245,7 +271,7 @@ Each input operates on its own axis:
                     │       ↕                                         │
   Launchpad ──────→│  gain depth      (how much EEG affects gain)    │
                     │       ↕                                         │
-  Fitbit ─────────→│  gain pulse      (rhythmic intensity swell)     │
+  AD8232/Fitbit ──→│  gain pulse      (rhythmic intensity swell)     │
                     │                                                 │
   Launchpad ──────→│  base gains      (always respected)             │
   (harmonic_beacon) │  base phases     (always respected)             │
@@ -287,6 +313,7 @@ All communication happens over OSC (UDP) on localhost by default:
 | Port | Service | Direction |
 |------|---------|-----------|
 | **5000** | muse_bridge listens | IN: Muse 2 EEG, hr_relay heartbeat, midi_relay slider |
+| **5001** | hr_relay (ecg mode) listens | IN: ESP32 ECG raw samples (/ecg/raw, /ecg/leads_off) |
 | **9001** | harmonic_beacon listens | IN: from harmonic_shaper (not used by bridge) |
 | **9002** | harmonic_shaper listens | IN: phase/gain from muse_bridge, voices from beacon |
 | **8080** | harmonic_shaper HTTP API | IN: state queries from muse_bridge on startup |
@@ -315,4 +342,4 @@ and 3), or can be run directly from the command line.
 
 - [PHASE_CONTROL_ANALYSIS.md](PHASE_CONTROL_ANALYSIS.md) — Deep dive into how EEG becomes phase rotation
 - [GAIN_MODULATION.md](GAIN_MODULATION.md) — Spectral tilt, tilt weights, the gain formula
-- [HEARTBEAT_PULSE.md](HEARTBEAT_PULSE.md) — Fitbit integration, hr_relay modes, envelope mechanics
+- [HEARTBEAT_PULSE.md](HEARTBEAT_PULSE.md) — ECG / Fitbit integration, hr_relay modes, envelope mechanics

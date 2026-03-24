@@ -31,7 +31,9 @@
     "bpm": 72,
     "variation": 3,
     "scan_timeout": 10,
-    "poll_interval": 15
+    "poll_interval": 15,
+    "ecg_listen_port": 5001,
+    "ecg_sample_rate": 250
   },
   "playback": {
     "actuator_ip": "192.168.1.50",

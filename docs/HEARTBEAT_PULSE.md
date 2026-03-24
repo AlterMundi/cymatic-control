@@ -2,8 +2,9 @@
 
 ## Overview
 
-A heart rate sensor (Fitbit or any BLE HR device) sends beat timing to
-`muse_bridge.py`, which fires a short gain envelope on each heartbeat.
+A heart rate sensor (AD8232 chest ECG, Fitbit, or any BLE HR device) sends
+beat timing to `muse_bridge.py`, which fires a short gain envelope on each
+heartbeat.
 The result is a visible rhythmic "breathing" in the cymatic pattern —
 the figure swells and decays in sync with the performer's heartbeat.
 
@@ -60,9 +61,9 @@ beat, preserving the current tonal balance.
 
 ---
 
-## Two Trigger Modes
+## Three Trigger Modes
 
-The bridge supports two triggering modes, selected automatically based on
+The bridge supports three triggering modes, selected automatically based on
 which OSC message it receives:
 
 ### Beat-Triggered Mode (BLE / Simulate)
@@ -92,9 +93,23 @@ Web API → hr_relay → /bridge/heartbeat_bpm → bridge internal clock
 
 This is the fallback for Fitbit models that don't support BLE HR broadcast.
 
+### ECG-Triggered Mode (AD8232 + ESP32)
+
+`hr_relay.py` receives raw ECG samples from the ESP32 via `/ecg/raw` on
+port 5001, runs Pan-Tompkins R-peak detection, and sends
+`/bridge/heartbeat [bpm, rr_ms]` on each detected R-peak. This gives the
+highest-fidelity beat timing — the cymatic pulse is phase-locked to the
+actual QRS complex with single-digit millisecond latency from ADC read
+to peak detection.
+
+```
+AD8232 → ESP32 ADC (250 Hz) → WiFi/OSC /ecg/raw :5001
+    → hr_relay → Pan-Tompkins → /bridge/heartbeat → muse_bridge
+```
+
 ---
 
-## hr_relay.py: Three Modes
+## hr_relay.py: Four Modes
 
 > **Tip:** The interactive launcher (`python cymatic.py`) handles heart rate
 > setup in Step 2/3 of the signal-chain wizard — pick your source and it
@@ -191,18 +206,96 @@ python hr_relay.py --mode fitbit-api \
 
 Sends `/bridge/heartbeat_bpm [bpm]` on each poll.
 
+### ECG Mode (`--mode ecg`)
+
+**AD8232 + ESP32** — the highest-fidelity heartbeat source. The AD8232
+single-lead ECG monitor captures the raw cardiac waveform from chest
+electrodes. The ESP32 samples the analog output at 250 Hz and streams
+batches of 8 samples over WiFi as OSC to `hr_relay.py`, which runs a
+Pan-Tompkins R-peak detection pipeline and forwards beat events.
+
+```bash
+python hr_relay.py --mode ecg --ecg-listen-port 5001
+```
+
+**Hardware setup:**
+
+```
+AD8232 Pin    NodeMCU ESP-32S    Notes
+──────────    ────────────────   ─────
+OUTPUT        IO34 (GPIO 34)     ADC1_CH6, input-only (clean analog read)
+LO+           IO32 (GPIO 32)     Lead-off detect (digital)
+LO-           IO33 (GPIO 33)     Lead-off detect (digital)
+3.3V          3V3                AD8232 runs at 3.3V natively
+GND           GND                Common ground
+SDN           (float/3.3V)       LOW = shutdown, leave floating for normal
+```
+
+All three signal pins are on ADC1 (GPIO 32-39), which is safe to use
+alongside WiFi (ADC2 is disabled when WiFi is active).
+
+**Electrode placement (3-lead chest):**
+- **RA** (right arm, black): Right chest, below collarbone
+- **LA** (left arm, red/blue): Left chest, below collarbone, symmetric
+- **RL** (right leg, green): Lower right abdomen (reference/ground)
+
+All electrodes under clothing for a performer. Chest placement minimizes
+motion artifact compared to limb placement.
+
+**ESP32 firmware:**
+
+See `firmware/ecg_esp32/ecg_esp32.ino`. No external libraries needed
+beyond the ESP32 core — OSC is implemented inline using raw UDP.
+
+**Configuration (two options):**
+- **Edit defaults:** Change the `DEFAULT_SSID`, `DEFAULT_PASS`,
+  `DEFAULT_TARGET_IP` values at the top of the file and re-upload.
+- **Serial commands:** Connect at 115200 baud and type:
+  ```
+  ssid:YourNetwork
+  pass:YourPassword
+  ip:192.168.1.100
+  port:5001
+  save
+  ```
+  Settings are saved to flash and persist across reboots. Type `status`
+  anytime to see the current config.
+
+**Testing the stream:**
+
+Use `test_ecg_stream.py` to verify the ESP32 is sending data before
+running the full cymatic system:
+
+```bash
+python test_ecg_stream.py          # signal trace + packet rate
+python test_ecg_stream.py --detect  # also runs R-peak detection, shows BPM
+```
+
+**Signal processing (Pan-Tompkins pipeline):**
+1. Bandpass filter 5-15 Hz (isolates QRS, removes P/T waves)
+2. Differentiate (emphasize R-peak slopes)
+3. Square (amplify large slopes, make positive)
+4. Moving window integration (150 ms smoothing)
+5. Adaptive threshold + refractory period (300 ms = 200 BPM max)
+
+Sends `/bridge/heartbeat [bpm, rr_ms]` on each detected R-peak — same
+message as BLE and simulate modes. `muse_bridge.py` needs no changes.
+
+**Lead-off detection:** When the ESP32 detects electrode disconnection
+(LO+/LO- pins go HIGH), it sends `/ecg/leads_off [1]` and the relay
+stops forwarding beats until contact is restored.
+
 ---
 
-## Which Fitbit Do You Have?
+## Which Device Should You Use?
 
-| Model | BLE HR Broadcast? | Recommended Mode |
-|-------|-------------------|------------------|
-| **Charge 6** | Yes (exercise mode) | `--mode ble` (best) |
-| Sense 2 | No | `--mode fitbit-api` |
-| Versa 4 | No | `--mode fitbit-api` |
-| Inspire 3 | No | `--mode fitbit-api` |
-| Luxe / older | No | `--mode fitbit-api` |
+| Device | Real-time? | Recommended Mode |
+|--------|------------|------------------|
+| **AD8232 + ESP32** | Yes (ECG, ~5ms latency) | `--mode ecg` (best fidelity) |
+| **Charge 6** | Yes (BLE, ~50-200ms) | `--mode ble` |
 | **Any BLE chest strap** | Yes (always on) | `--mode ble` |
+| Sense 2 / Versa 4 | No (cloud delay) | `--mode fitbit-api` |
+| Inspire 3 / Luxe | No (cloud delay) | `--mode fitbit-api` |
 | No device yet | N/A | `--mode simulate` |
 
 ---
@@ -248,7 +341,7 @@ dimension to the cymatic evolution:
 
 - **Phase** (Muse 2): The *shape* of the interference pattern slowly evolves
 - **Gain tilt** (Muse 2 + slider): The *tonal balance* shifts with brain state
-- **Gain pulse** (Fitbit): The *intensity* rhythmically breathes with the heart
+- **Gain pulse** (AD8232 / Fitbit): The *intensity* rhythmically breathes with the heart
 
 ---
 
@@ -264,7 +357,7 @@ dimension to the cymatic evolution:
 
 | Address | Payload | Source | Effect |
 |---------|---------|--------|--------|
-| `/bridge/heartbeat` | `[bpm, rr_ms]` | BLE / simulate | Fires envelope immediately |
+| `/bridge/heartbeat` | `[bpm, rr_ms]` | BLE / simulate / ECG | Fires envelope immediately |
 | `/bridge/heartbeat_bpm` | `[bpm]` | Fitbit Web API | Updates local beat synthesizer |
 
 ### Tuning the Pulse
@@ -288,3 +381,4 @@ method in `muse_bridge.py`.
 | `bleak>=0.22.0` | BLE | `pip install bleak` |
 | `requests-oauthlib>=1.3.0` | fitbit-api | `pip install requests-oauthlib` |
 | (none extra) | simulate | Already in requirements |
+| (none extra) | ecg | Uses numpy/scipy already in requirements |

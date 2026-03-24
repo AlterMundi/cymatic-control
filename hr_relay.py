@@ -336,6 +336,64 @@ def run_fitbit_api(osc, args):
 
 
 # ─────────────────────────────────────────────
+# ECG Mode (AD8232 + ESP32)
+# ─────────────────────────────────────────────
+
+def run_ecg(osc, args):
+    """Receive raw ECG from ESP32 over OSC, detect R-peaks, forward heartbeats.
+
+    The ESP32 streams /ecg/raw [s0..s7] batches (8 ADC samples at 250 Hz).
+    This function runs a Pan-Tompkins R-peak detector and sends
+    /bridge/heartbeat [bpm, rr_ms] on each detected beat — same message
+    format as BLE and simulate modes.
+    """
+    from ecg_analysis import ECGProcessor
+    from pythonosc import dispatcher as ecg_dispatcher, osc_server as ecg_osc_server
+
+    sample_rate = args.ecg_sample_rate
+    processor = ECGProcessor(sample_rate=sample_rate)
+    beat_count = 0
+
+    def ecg_raw_handler(address, *samples):
+        nonlocal beat_count
+        beats = processor.add_samples(list(samples))
+        for bpm, rr_ms in beats:
+            osc.send_message("/bridge/heartbeat", [bpm, rr_ms])
+            beat_count += 1
+            bar = "\u2665" if beat_count % 2 == 0 else "\u2661"
+            print(f"\r  {bar} beat #{beat_count}  {bpm:.1f} BPM  "
+                  f"(RR: {rr_ms:.0f}ms)", end="", flush=True)
+
+    def ecg_leads_off_handler(address, *args_osc):
+        off = bool(args_osc[0]) if args_osc else True
+        processor.set_leads_off(off)
+        if off:
+            print(f"\r  \u26a0 Leads off — check electrode contact          ",
+                  end="", flush=True)
+        else:
+            print(f"\r  \u2714 Leads reconnected                             ",
+                  end="", flush=True)
+
+    disp = ecg_dispatcher.Dispatcher()
+    disp.map("/ecg/raw", ecg_raw_handler)
+    disp.map("/ecg/leads_off", ecg_leads_off_handler)
+
+    listen_port = args.ecg_listen_port
+    server = ecg_osc_server.ThreadingOSCUDPServer(("0.0.0.0", listen_port), disp)
+
+    print(f"  Listening for ESP32 ECG on port {listen_port}...")
+    print(f"  Waiting for /ecg/raw data...\n")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+    server.server_close()
+    print(f"\n\n  Stopped after {beat_count} beats.\n")
+
+
+# ─────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────
 
@@ -347,7 +405,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="HR Relay — Forward heartbeat data to muse_bridge as OSC"
     )
-    parser.add_argument("--mode", choices=["simulate", "ble", "fitbit-api"],
+    parser.add_argument("--mode", choices=["simulate", "ble", "fitbit-api", "ecg"],
                         default=hr_cfg.get("mode", "simulate"),
                         help="Data source mode (default: simulate)")
     parser.add_argument("--target-ip",
@@ -381,6 +439,14 @@ def main():
                         default=hr_cfg.get("poll_interval", 15.0),
                         help="Fitbit API poll interval in seconds (default: 15)")
 
+    # ECG mode args
+    parser.add_argument("--ecg-listen-port", type=int,
+                        default=hr_cfg.get("ecg_listen_port", 5001),
+                        help="Port to listen for ESP32 ECG OSC (default: 5001)")
+    parser.add_argument("--ecg-sample-rate", type=int,
+                        default=hr_cfg.get("ecg_sample_rate", 250),
+                        help="ECG sample rate in Hz (default: 250)")
+
     args = parser.parse_args()
 
     osc = udp_client.SimpleUDPClient(args.target_ip, args.target_port)
@@ -389,6 +455,7 @@ def main():
         "simulate": "SIMULATED BEATS",
         "ble": "BLE HEART RATE",
         "fitbit-api": "FITBIT WEB API",
+        "ecg": "ECG (AD8232 + ESP32)",
     }
 
     print(f"\n{'='*55}")
@@ -403,6 +470,9 @@ def main():
     elif args.mode == "fitbit-api":
         print(f"  Poll:     every {args.poll_interval}s")
         print(f"  OSC out:  /bridge/heartbeat_bpm")
+    elif args.mode == "ecg":
+        print(f"  ECG in:   /ecg/raw @ 0.0.0.0:{args.ecg_listen_port}")
+        print(f"  Rate:     {args.ecg_sample_rate} Hz")
     print(f"{'='*55}\n")
 
     if args.mode == "simulate":
@@ -411,6 +481,8 @@ def main():
         run_ble(osc, args)
     elif args.mode == "fitbit-api":
         run_fitbit_api(osc, args)
+    elif args.mode == "ecg":
+        run_ecg(osc, args)
 
 
 if __name__ == "__main__":

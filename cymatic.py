@@ -264,6 +264,10 @@ def cmd_hr_relay(mode, ip="127.0.0.1", port=5000, **kw):
         if kw.get("client_secret"):
             c += ["--client-secret", kw["client_secret"]]
         c += ["--poll-interval", str(kw.get("poll_interval", 15.0))]
+    elif mode == "ecg":
+        c += ["--ecg-listen-port", str(kw.get("ecg_listen_port", 5001))]
+        if kw.get("ecg_sample_rate"):
+            c += ["--ecg-sample-rate", str(kw["ecg_sample_rate"])]
     return c
 
 
@@ -462,6 +466,7 @@ def ask_hr_source(listen_port):
         ("2", f"Simulate {C.DIM}(synthetic beats at configurable BPM){C.RESET}"),
         ("3", f"BLE {C.DIM}(Fitbit Charge 6 / any BLE HR sensor){C.RESET}"),
         ("4", f"Fitbit Web API {C.DIM}(cloud, requires OAuth){C.RESET}"),
+        ("5", f"ECG chest sensor {C.DIM}(AD8232 + ESP32, real-time R-peak){C.RESET}"),
     ])
     if choice is None:
         return None, 0.0
@@ -487,6 +492,12 @@ def ask_hr_source(listen_port):
         csec = ask("Fitbit OAuth client secret", None)
         step = ("HR Relay (Fitbit)", cmd_hr_relay("fitbit-api", port=listen_port,
                                                    client_id=cid, client_secret=csec), True)
+        return [step], pulse
+
+    if choice == "5":
+        ecg_port = ask_int("ECG listen port (ESP32 sends here)", 5001)
+        step = ("HR Relay (ECG)", cmd_hr_relay("ecg", port=listen_port,
+                                               ecg_listen_port=ecg_port), True)
         return [step], pulse
 
 
@@ -555,12 +566,14 @@ def _shaper_step_by_step():
         ("2", f"Simulate {C.DIM}(synthetic beats at configurable BPM){C.RESET}"),
         ("3", f"BLE sensor {C.DIM}(Fitbit Charge 6 / any BLE HR device){C.RESET}"),
         ("4", f"Fitbit Web API {C.DIM}(cloud polling, OAuth required){C.RESET}"),
+        ("5", f"ECG chest sensor {C.DIM}(AD8232 + ESP32, real-time R-peak){C.RESET}"),
     ])
     if hr is None:
         return
 
     has_hr = hr != "1"
-    hr_labels = {"2": "Simulated", "3": "BLE sensor", "4": "Fitbit Web API"}
+    hr_labels = {"2": "Simulated", "3": "BLE sensor", "4": "Fitbit Web API",
+                  "5": "ECG chest sensor"}
     pulse = 0.0
 
     if has_hr:
@@ -582,6 +595,11 @@ def _shaper_step_by_step():
             all_steps.append(("HR Relay (Fitbit)",
                               cmd_hr_relay("fitbit-api", port=listen_port,
                                            client_id=cid, client_secret=csec), True))
+        elif hr == "5":
+            ecg_port = ask_int("ECG listen port (ESP32 sends here)", 5001)
+            all_steps.append(("HR Relay (ECG)",
+                              cmd_hr_relay("ecg", port=listen_port,
+                                           ecg_listen_port=ecg_port), True))
 
     # ─── Step 3: MIDI → Gain tilt depth ────────────────────────────
 
@@ -840,7 +858,7 @@ def wizard_utilities():
         ])
 
     elif choice == "3":
-        mode = pick("HR mode", ["simulate", "ble", "fitbit-api"], "simulate")
+        mode = pick("HR mode", ["simulate", "ble", "fitbit-api", "ecg"], "simulate")
         port = ask_int("Target port", 5000)
         kw = {}
         if mode == "simulate":
@@ -853,6 +871,8 @@ def wizard_utilities():
         elif mode == "fitbit-api":
             kw["client_id"] = ask("Fitbit client ID", "")
             kw["client_secret"] = ask("Fitbit client secret", "")
+        elif mode == "ecg":
+            kw["ecg_listen_port"] = ask_int("ECG listen port (ESP32 sends here)", 5001)
         preview_and_launch([
             ("HR Relay", cmd_hr_relay(mode, port=port, **kw), False),
         ])
@@ -889,8 +909,14 @@ def show_architecture():
              │                      │
       ┌──────┴──────┐       ┌──────┴──────┐
       │ {C.RESET}{C.BOLD}hr_relay.py{C.RESET}{C.DIM}  │       │{C.RESET}{C.BOLD}midi_relay.py{C.RESET}{C.DIM}│
-      │ sim/BLE/API │       │ Launchpad   │
-      └─────────────┘       └─────────────┘{C.RESET}
+      │sim/BLE/API/ │       │ Launchpad   │
+      │ {C.RESET}{C.BCYAN}ECG{C.RESET}{C.DIM} (:5001) │       └─────────────┘
+      └──────┬──────┘
+             │ /ecg/raw
+      ┌──────┴──────┐
+      │{C.RESET}{C.BOLD} AD8232+ESP32{C.RESET}{C.DIM} │
+      │ chest ECG   │
+      └─────────────┘{C.RESET}
 
   {C.DIM}Standalone bridges (no harmonic_shaper):
     osc_bridge.py          — Muse 2 EEG → ESP32 directly
