@@ -269,6 +269,7 @@ running the full cymatic system:
 ```bash
 python test_ecg_stream.py          # signal trace + packet rate
 python test_ecg_stream.py --detect  # also runs R-peak detection, shows BPM
+python test_devices.py --ecg       # combined device monitor (works for EEG too)
 ```
 
 **Signal processing (Pan-Tompkins pipeline):**

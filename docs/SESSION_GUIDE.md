@@ -338,6 +338,21 @@ and 3), or can be run directly from the command line.
 
 ---
 
+## Testing Devices Without Sound
+
+To verify hardware without running harmonic_shaper or muse_bridge:
+
+```bash
+python test_devices.py              # monitor both Muse 2 + ECG
+python test_devices.py --eeg        # EEG only
+python test_devices.py --ecg        # ECG only
+```
+
+Shows a live dashboard with EEG band powers, electrode contact, ECG trace,
+and BPM. Useful for checking device connectivity before starting a session.
+
+---
+
 ## Further Reading
 
 - [PHASE_CONTROL_ANALYSIS.md](PHASE_CONTROL_ANALYSIS.md) — Deep dive into how EEG becomes phase rotation

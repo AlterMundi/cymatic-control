@@ -138,6 +138,21 @@ python hr_relay.py --mode ecg
 | 3.3V | 3V3 | |
 | GND | GND | |
 
+## Testing Without Sound
+
+Don't need harmonic_shaper running? Use the device monitor to verify
+your hardware is working:
+
+```bash
+python test_devices.py              # monitor both Muse 2 + ECG
+python test_devices.py --eeg        # EEG only (Muse 2 via Mind Monitor)
+python test_devices.py --ecg        # ECG only (ESP32 + AD8232)
+```
+
+Shows a live dashboard with EEG band powers, electrode contact quality,
+ECG trace, heart rate, and dominant brain state — no harmonic_shaper or
+muse_bridge needed.
+
 ## Gain Formula
 
 ```
@@ -168,6 +183,7 @@ final_gain = base * (1 + tilt * gain_depth) * (1 + heartbeat_envelope)
 | `midi_relay.py` | MIDI CC (Launchpad slider) -> OSC for muse_bridge |
 | `simulate_eeg.py` | Mock brain activity for testing (7 states) |
 | `firmware/ecg_esp32/` | ESP32 firmware: AD8232 ECG → WiFi/OSC (serial or edit config) |
+| `test_devices.py` | Hardware monitor: EEG + ECG dashboard (no harmonic_shaper needed) |
 | `test_ecg_stream.py` | Standalone ECG stream verifier (signal trace, packet rate, BPM) |
 | `simulate_tilt.py` | Mock alpha/beta tilt stages for gain observation |
 | `eeg_analysis.py` | Shared EEG signal processing (band power, PSD) |
